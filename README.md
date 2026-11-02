@@ -11,6 +11,7 @@ A tribute to "Girl I Love You" and the screens of Massive Attack's Heligoland to
 
 - `index.html` : la séquence animée, avec la liste des chiffres, leurs sources et la note de méthode. The animated sequence, with every figure, its source and the method note.
 - `from_3_to_31077000000000.mp4` : la vidéo (5:39, 1280 × 720). The video.
+- `fonts/` : les polices JetBrains Mono et Archivo, sous licence SIL Open Font License. La page ne contacte aucun serveur tiers. Bundled fonts under the SIL Open Font License: the page makes no third-party requests.
 
 ## Musique · Music
 
