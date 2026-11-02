@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Le Compte IA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;800&family=Archivo:wght@400;600&display=swap">
+<style>
+/* Layout : un mur de LED pleine largeur (la scène), puis le programme de la séquence en dessous, comme une feuille de concert. */
+:root{
+  --void:#070504;
+  --led-off:#140e09;
+  --led-on:#ffb547;
+  --led-red:#ff3b2f;
+  --ink:#e6dccd;
+  --mute:#94867a;
+  --rule:#2a2119;
+  --f-led:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --f-body:"Archivo", "Helvetica Neue", Arial, sans-serif;
+  color-scheme:dark;
+}
+html,body{background:var(--void);color:var(--ink)}
+body{font-family:var(--f-body);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 48px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+.stage{position:relative;width:100%;height:clamp(380px,56.25vw,80vh);background:var(--void);border:1px solid var(--rule);overflow:hidden;cursor:pointer}
+.stage:fullscreen{height:100%;border:0}
+canvas{display:block;width:100%;height:100%}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;font-family:var(--f-led);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+.bar button{font:inherit;letter-spacing:inherit;color:var(--led-on);background:transparent;border:1px solid var(--rule);padding:8px 12px;cursor:pointer}
+.bar button:hover{border-color:var(--mute)}
+.bar button:focus-visible{outline:2px solid var(--led-red);outline-offset:2px}
+.ticks{display:flex;gap:2px;flex:1 1 160px;min-width:0}
+.ticks i{flex:1;height:4px;background:var(--led-off)}
+.ticks i.on{background:var(--led-on)}
+.ticks i.red.on{background:var(--led-red)}
+.ticks i.now{background:var(--mute)}
+h1{font-family:var(--f-led);font-weight:800;font-size:clamp(22px,3.4vw,36px);letter-spacing:-.01em;color:var(--led-on);margin:0;text-wrap:balance}
+.lede{max-width:65ch;line-height:1.6;margin:8px 0 0}
+.sheet{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:40px}
+@media (max-width:820px){.sheet{grid-template-columns:minmax(0,1fr)}}
+h2{font-family:var(--f-led);font-weight:500;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin:0 0 10px}
+h3{font-family:var(--f-led);font-weight:800;font-size:14px;letter-spacing:.06em;text-transform:uppercase;color:var(--led-on);margin:22px 0 6px}
+h3:first-of-type{margin-top:0}
+ol.seq{list-style:none;margin:0;padding:0;counter-reset:none}
+ol.seq li{display:grid;grid-template-columns:2.2em minmax(0,9.5em) minmax(0,1fr);gap:10px;padding:8px 0;border-bottom:1px solid var(--rule);font-size:14px;line-height:1.45}
+ol.seq li .k{font-family:var(--f-led);color:var(--mute);font-variant-numeric:tabular-nums}
+ol.seq li .v{font-family:var(--f-led);color:var(--led-on);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+ol.seq li.red .v{color:var(--led-red)}
+ol.seq li .en{display:block;color:var(--mute);font-size:12px;margin-top:2px}
+ol.seq li a{color:var(--mute);font-size:12px;margin-left:4px}
+ol.seq li.punch{grid-template-columns:2.2em minmax(0,1fr);color:var(--led-red);font-family:var(--f-led);font-size:12px;letter-spacing:.04em;text-transform:uppercase}
+@media (max-width:480px){ol.seq li{grid-template-columns:2em minmax(0,1fr)} ol.seq li .v{grid-column:2;text-align:left} ol.seq li .t{grid-column:2}}
+.notes{line-height:1.6;font-size:14px;max-width:65ch}
+.notes p{margin:0 0 12px}
+a{color:var(--led-on)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="stage" id="stage"><canvas id="wall" aria-label="Mur de LED affichant la séquence de chiffres l'un après l'autre"></canvas></div>
+
+  <div class="bar">
+    <button id="play" type="button">Pause</button>
+    <button id="restart" type="button">Recommencer</button>
+    <button id="fs" type="button">Plein écran</button>
+    <div class="ticks" id="ticks" aria-hidden="true"></div>
+    <span id="pos"></span>
+  </div>
+
+  <header>
+    <h1>De 3 $ à 31 077 milliards $</h1>
+    <p class="lede">Ce qu'a pour vivre une journée près d'un Africain subsaharien sur deux, ce que le monde n'a pas trouvé pour soigner et nourrir, la dette qui a fait tomber 2008, et ce que pèse aujourd'hui le marché de l'IA. Un hommage à la chanson <a href="https://www.youtube.com/watch?v=lBu3jjYMXxs" target="_blank" rel="noopener">« Girl I Love You »</a> et au visuel de la tournée Heligoland de Massive Attack.</p>
+  </header>
+
+  <div class="sheet">
+    <div id="program"></div>
+    <div class="notes">
+      <h2>Méthode</h2>
+      <p>Tous les montants sont en dollars américains, triés du plus petit au plus grand. Les sources datent de 2007 à octobre 2026 selon le fait décrit.</p>
+      <p>La moyenne chez Goldman Sachs divise l'enveloppe de rémunération 2007 par le nombre d'employés. Les lignes rouges sont des dettes. Les trois écrans de fin sont calculés à partir des chiffres de la séquence.</p>
+      <p>Sauver un enfant de la malnutrition sévère : coût complet du traitement par aliment thérapeutique selon l'UNICEF. Cataracte (25 $) et fistule (598 $, 2022) : coûts publiés par les associations qui opèrent, Himalayan Cataract Project et Fistula Foundation. Mammographie : moyenne américaine sans assurance (MDSave, 2024). MSF publie ses comptes en euros (plus de 2 G€ en 2024) : la conversion en dollars est la nôtre. Le puits : 8 000 $ est le coût typique d'un puits en Ouganda ; 1 429 est le nombre d'élèves desservis par un puits documenté à Gulu. La dette moyenne étudiante divise 1 858 G$ par 42,8 millions d'emprunteurs. Sauver une vie du paludisme : coût moyen 2020 d'une vie sauvée par la distribution de moustiquaires, illustré par GiveWell en Guinée. Mozilo : règlement SEC de 67,5 M$ (22,5 M$ d'amende, 45 M$ de restitution), dont 25 M$ pris sur un fonds de la société et 20 M$ réglés par Bank of America selon une source anonyme ; 139 M$ de ventes d'actions entre novembre 2006 et octobre 2007 selon la SEC. Les 73 primes d'AIG ont été versées à la division AIG Financial Products, qui vendait les assurances sur les titres subprimes.</p>
+      <p>Les 31 077 G$ sont la valorisation de douze entreprises : les 7 Magnifiques (23 720, au 25 octobre 2026), TSMC (2 300, juin), SpaceX + xAI (2 000, septembre), Micron (1 240, septembre), Anthropic (965, mai) et OpenAI (852, mars). La dette n'y est pas ajoutée. Huit d'entre elles sont cotées au S&P 500 (les 7 Magnifiques et Micron) : elles pèsent 24 960 G$, soit 36,5 % des 68 450 G$ de l'indice fin septembre 2026, pour 8 entreprises sur 500 (1,6 %). TSMC est taïwanaise, SpaceX n'est pas encore dans l'indice, OpenAI et Anthropic ne sont pas cotées. Apple et Tesla sont moins exposées aux IA que les autres. Moustiquaires : selon GiveWell, 4 500 $ achètent 1 001 moustiquaires, dont 795 utilisées, qui protègent 1 431 personnes et sauvent une vie. Les 1 650 G$ hors bilan (étude Nikkei, juillet 2026) mêlent dettes de véhicules dédiés et loyers futurs déjà engagés ; ces montages sont légaux et signalés en note des comptes. Une valorisation n'est pas de l'argent disponible : les comparaisons donnent des ordres de grandeur, pas un arbitrage possible.</p>
+      <p>Ce que disent les défenseurs du secteur : la dette IA est surtout portée par des entreprises notées A à AA et très rentables, quand celle de 2008 reposait sur des ménages insolvables, et elle finance des actifs durables comme les centres de données et l'énergie.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const K = 1e3, M = 1e6, G = 1e9, T = 1e12;
+  const S = {
+    gw:'https://www.givewell.org/node/4041',
+    r21:'https://www.arabnews.com/node/2623711/world',
+    rutf:'https://www.unicef.org/gulf/what-rutf-five-things-know-about-ready-use-therapeutic-food',
+    well:'https://dropinthebucket.org/intervention/st-peters-junior-school-gulu-uganda/',
+    pov:'https://nairametrics.com/2026/10/07/world-bank-projects-africas-per-capita-gdp-growth-at-1-8-poverty-at-47-8-in-2026/',
+    stud:'https://thecollegeinvestor.com/88237/student-loan-debt-reaches-1-86-trillion/',
+    gar:'https://www.cbsnews.com/newyork/news/student-loan-borrowers-default-wages-garnished-2026',
+    mal:'https://euronews.com/health/2025/12/04/malaria-deaths-rose-last-year-as-funding-cuts-risk-resurgence-who-warns',
+    gavi:'https://www.gavi.org/vaccineswork/gavi-secures-record-number-pledges-now-hard-work-immunising-worlds-children-begins',
+    gf:'https://aidspan.org/Blog/view/32577/the_global_fund_raises_us_11_34_billion_in_pledges_at_its_8th_replenishment_meeting_between_disappointment_and_hope',
+    ocha:'https://news.un.org/en/story/2025/12/1166526',
+    wfp:'https://www.al-monitor.com/originals/2025/11/un-says-lacks-billions-dollars-feed-worlds-hungry',
+    usaid:'https://www.everycrsreport.com/files/2025-09-05_IF10261_675e6d431c41d3c7bcbda03dda2ee4dd857e4c3e.html',
+    tarp:'https://home.treasury.gov/data/troubled-assets-relief-program/about-tarp',
+    gs:'https://aiweekly.co/alerts/ft-goldman-sachs-tallies-500b-in-ai-linked-debt-issued-in-2026-track-to-hit',
+    leh:'https://en.wikipedia.org/wiki/Bankruptcy_of_Lehman_Brothers',
+    afd:'https://blueprint.ng/africas-foreign-debtll-surpass-1-3trn-by-2025-report/',
+    sub:'https://ncnewsline.com/2007/11/08/a-coming-foreclosure-flood/',
+    aid:'https://www.niftytrader.in/markets/ai-debt-boom-570bn-reshapes-bond-markets/',
+    fed:'https://www.federalreservehistory.org/essays/great-recession-of-200709',
+    afg:'https://www.africanexponent.com/largest-economies-in-africa-in-2026-every-country-ranked-by-gdp/',
+    nv:'https://www.online-sciences.com/?p=157524',
+    mcl:'https://www.marketcaplens.com/magnificent-7-stocks',
+    spx:'https://pluang.com/en/news-feed/snapshot-kapitalisasi-pasar-sp-500-fall-2026',
+    m7:'https://fffinstill.com/blog/magnificent-7-2026-data-driven-check',
+    bls07:'https://www.bls.gov/news.release/archives/cesan_11252008.htm',
+    bls24:'https://www.bls.gov/opub/ted/2026/housing-and-transportation-accounted-for-50-percent-of-household-spending-in-2024.htm',
+    osc:'https://www.osc.ny.gov/press/releases/2009/01/dinapoli-wall-street-bonuses-fell-44-2008',
+    gold:'https://money.cnn.com/2007/12/18/news/companies/goldman_bonus/index.htm',
+    aigfp:'https://money.cnn.com/2009/03/17/news/companies/aig_bonuses/',
+    nik:'https://thenextweb.com/news/tech-giants-hidden-off-balance-sheet-debt-ai',
+    orcl:'https://startupmap.iamsterdam.com/news/note/oracle-taps-25b-bond-as-debt-hits-130b-and-rating-slips-to-junk-s-edge',
+    moz2:'https://www.nbcnews.com/id/wbna39688498',
+    cat:'https://www.philanthropyroundtable.org/almanac/banishing-blindness-at-25-per-person/',
+    mam:'https://www.goodrx.com/conditions/breast-cancer/how-much-mammogram-cost',
+    fis:'https://fistulafoundation.org/news/thanks-from-the-field-surgery-cost-update-and-more/',
+    msf:'https://www.msf.org/international-activity-report-2024/2024-figures',
+    who:'https://www.who.int/news/item/20-05-2025-in-historic-move--who-member-states-approve-20--funding-increase-and-2026-27-budget',
+    aig73:'https://amp.insurancejournal.com/news/east/2009/03/18/98815.htm',
+    moz:'https://money.cnn.com/2010/10/15/news/companies/mozilo_SEC/',
+    aig:'https://www.npr.org/2009/03/15/101926747/aig-executives-165m-in-bonus-money-draws-ire',
+    fuld:'https://abcnews.com/Blotter/story?id=5965360',
+    pmi:'https://www.kff.org/global-health-policy/fact-sheet/the-trump-administrations-foreign-aid-review-status-of-the-presidents-malaria-initiative-pmi/',
+    mer:'https://corpgov.law.harvard.edu/2009/11/07/merrill-bonuses-raised-issues-in-merger-with-bank-of-america/',
+  };
+  const SCENES = [
+    {k:'text', text:'LES CHIFFRES QUI SUIVENT SONT EN DOLLARS AMÉRICAINS', en:'THE FOLLOWING FIGURES ARE IN US DOLLARS'},
+
+    {k:'num', v:3, label:'CE QU\'A POUR VIVRE UNE JOURNÉE PRÈS D\'UN AFRICAIN SUBSAHARIEN SUR DEUX', src:S.pov, en:'WHAT NEARLY ONE IN TWO SUB-SAHARAN AFRICANS HAS TO LIVE ON FOR A DAY'},
+    {k:'num', v:4.5, dec:2, label:'UNE MOUSTIQUAIRE, QUI PROTÈGE EN MOYENNE 1,8 PERSONNE DU PALUDISME', src:S.gw, en:'ONE MOSQUITO NET, PROTECTING 1.8 PEOPLE FROM MALARIA ON AVERAGE'},
+    {k:'num', v:25, label:'RENDRE LA VUE À UN AVEUGLE, DANS LES PAYS LES PLUS PAUVRES', src:S.cat, en:'RESTORING SIGHT TO A BLIND PERSON IN THE POOREST COUNTRIES'},
+    {k:'num', v:150, label:'SAUVER UN ENFANT DE LA MALNUTRITION SÉVÈRE', src:S.rutf, en:'SAVING A CHILD FROM SEVERE MALNUTRITION'},
+    {k:'num', v:400, label:'UNE MAMMOGRAPHIE AUX ÉTATS-UNIS, SANS ASSURANCE', src:S.mam, en:'A MAMMOGRAM IN THE UNITED STATES, WITHOUT INSURANCE'},
+    {k:'num', v:598, label:'OPÉRER UNE FEMME D\'UNE FISTULE OBSTÉTRICALE', src:S.fis, en:'REPAIRING A WOMAN\'S OBSTETRIC FISTULA'},
+    {k:'num', v:4500, label:'1 001 MOUSTIQUAIRES, 1 431 PERSONNES PROTÉGÉES, UNE VIE SAUVÉE EN GUINÉE', src:S.gw, en:'1,001 NETS, 1,431 PEOPLE PROTECTED, ONE LIFE SAVED IN GUINEA'},
+    {k:'num', v:8000, label:'DE L\'EAU POTABLE POUR 1 429 ÉCOLIERS EN OUGANDA', src:S.well, en:'CLEAN WATER FOR 1,429 SCHOOLCHILDREN IN UGANDA'},
+    {k:'num', v:43400, label:'LA DETTE MOYENNE D\'UN ÉTUDIANT AMÉRICAIN', red:true, src:S.stud, en:'THE AVERAGE DEBT OF AN AMERICAN STUDENT'},
+    {k:'num', v:49638, label:'CE QUE COÛTAIT UNE ANNÉE DE VIE POUR UNE FAMILLE AMÉRICAINE EN 2007', src:S.bls07, en:'WHAT A YEAR OF LIFE COST AN AMERICAN FAMILY IN 2007'},
+    {k:'num', v:78535, label:'CE QU\'ELLE COÛTE AUJOURD\'HUI', src:S.bls24, en:'WHAT IT COSTS TODAY'},
+    {k:'num', v:112000, label:'LA PRIME MOYENNE D\'UN EMPLOYÉ DE WALL STREET EN 2008, L\'ANNÉE DU KRACH', src:S.osc, en:'THE AVERAGE WALL STREET BONUS IN 2008, THE YEAR OF THE CRASH'},
+    {k:'num', v:661400, label:'LA RÉMUNÉRATION MOYENNE D\'UN EMPLOYÉ DE GOLDMAN SACHS EN 2007', src:S.gold, en:'THE AVERAGE PAY OF A GOLDMAN SACHS EMPLOYEE IN 2007'},
+    {k:'num', v:1e6, label:'LA PRIME MINIMALE DE 73 EMPLOYÉS DE LA DIVISION QUI A FAIT COULER AIG', src:S.aigfp, en:'THE MINIMUM BONUS OF 73 EMPLOYEES IN THE DIVISION THAT SANK AIG'},
+    {k:'num', v:6.4e6, label:'LA PLUS GROSSE PRIME VERSÉE PAR AIG APRÈS SON SAUVETAGE PAR L\'ARGENT PUBLIC', src:S.aigfp, en:'THE LARGEST BONUS PAID BY AIG AFTER ITS TAXPAYER BAILOUT'},
+    {k:'num', v:22.5e6, label:'CE QU\'ANGELO MOZILO, PATRON DE COUNTRYWIDE, ROI DES SUBPRIMES, A PAYÉ DE SA POCHE', src:S.moz2, en:'WHAT ANGELO MOZILO, COUNTRYWIDE CEO, KING OF SUBPRIME, PAID OUT OF HIS OWN POCKET'},
+    {k:'num', v:139e6, label:'CE QU\'IL AVAIT ENCAISSÉ EN VENDANT SES ACTIONS, JUSTE AVANT LA CRISE', src:S.moz2, en:'WHAT HE MADE SELLING HIS SHARES, JUST BEFORE THE CRISIS'},
+    {k:'num', v:165e6, label:'LES PRIMES D\'AIG, PAYÉES AVEC L\'ARGENT DU SAUVETAGE PUBLIC', src:S.aig, en:'AIG\'S BONUSES, PAID WITH PUBLIC BAILOUT MONEY'},
+    {k:'num', v:484e6, label:'CE QUE DICK FULD, PATRON DE LEHMAN BROTHERS, A TOUCHÉ DEPUIS 2000', src:S.fuld, en:'WHAT DICK FULD, LEHMAN BROTHERS CEO, TOOK HOME SINCE 2000'},
+    {k:'num', v:2.16e9, label:'TOUT LE BUDGET DE MÉDECINS SANS FRONTIÈRES EN 2024', src:S.msf, en:'THE ENTIRE 2024 BUDGET OF DOCTORS WITHOUT BORDERS'},
+    {k:'num', v:3.6e9, label:'LES PRIMES DE MERRILL LYNCH FIN 2008, L\'ANNÉE OÙ LA BANQUE A PERDU 27,6 MILLIARDS', src:S.mer, en:'MERRILL LYNCH BONUSES AT THE END OF 2008, THE YEAR THE BANK LOST 27.6 BILLION'},
+
+    {k:'num', v:3.9*G, label:'TOUT L\'ARGENT CONTRE LE PALUDISME EN 2024. IL A TUÉ 610 000 PERSONNES.', src:S.mal, en:'ALL THE MONEY AGAINST MALARIA IN 2024. IT KILLED 610,000 PEOPLE.'},
+    {k:'num', v:4.2*G, label:'LE BUDGET DE L\'OMS POUR DEUX ANS, AMPUTÉ DE 22 % FAUTE DE FINANCEMENT', src:S.who, en:'THE WHO\'S TWO-YEAR BUDGET, CUT BY 22% FOR LACK OF FUNDING'},
+    {k:'num', v:9*G, label:'PROMIS À GAVI POUR VACCINER 500 MILLIONS D\'ENFANTS', src:S.gavi, en:'PLEDGED TO GAVI TO VACCINATE 500 MILLION CHILDREN'},
+    {k:'num', v:11.34*G, label:'PROMIS AU FONDS MONDIAL CONTRE LE SIDA, LA TUBERCULOSE ET LE PALUDISME', src:S.gf, en:'PLEDGED TO THE GLOBAL FUND AGAINST AIDS, TUBERCULOSIS AND MALARIA'},
+    {k:'num', v:12*G, label:'TOUTE L\'AIDE HUMANITAIRE REÇUE PAR L\'ONU EN 2025', src:S.ocha, en:'ALL THE HUMANITARIAN AID THE UN RECEIVED IN 2025'},
+    {k:'num', v:13*G, label:'POUR NOURRIR 110 MILLIONS DE PERSONNES EN 2026', src:S.wfp, en:'TO FEED 110 MILLION PEOPLE IN 2026'},
+    {k:'num', v:18*G, label:'POUR SAUVER 23 MILLIONS DE VIES', src:S.gf, en:'TO SAVE 23 MILLION LIVES'},
+    {k:'num', v:23*G, label:'POUR SECOURIR 87 MILLIONS DE PERSONNES EN 2026', src:S.ocha, en:'TO HELP 87 MILLION PEOPLE IN 2026'},
+    {k:'num', v:27*G, label:'LA DETTE D\'UN SEUL CENTRE DE DONNÉES DE META, INSCRITE HORS DE SES COMPTES', red:true, src:S.nik, en:'THE DEBT OF A SINGLE META DATA CENTER, KEPT OFF ITS BOOKS'},
+    {k:'num', v:33*G, label:'L\'APPEL HUMANITAIRE MONDIAL 2026', src:S.ocha, en:'THE 2026 GLOBAL HUMANITARIAN APPEAL'},
+    {k:'num', v:35*G, label:'LE BUDGET DE L\'USAID EN 2024, AVANT SON DÉMANTÈLEMENT', src:S.usaid, en:'USAID\'S 2024 BUDGET, BEFORE IT WAS DISMANTLED'},
+    {k:'num', v:130*G, label:'LA DETTE D\'ORACLE, UNE SEULE ENTREPRISE, POUR CONSTRUIRE DES CENTRES DE DONNÉES D\'IA', red:true, src:S.orcl, en:'ORACLE\'S DEBT, ONE SINGLE COMPANY, TO BUILD AI DATA CENTERS'},
+    {k:'num', v:420*G, label:'CE QUE META NE MONTRE PAS DANS SON BILAN', red:true, src:S.nik, en:'WHAT META DOESN\'T SHOW ON ITS BALANCE SHEET'},
+
+    {k:'num', v:443.5*G, label:'VERSÉ POUR SAUVER LES BANQUES EN 2008', src:S.tarp, en:'SPENT TO RESCUE THE BANKS IN 2008'},
+    {k:'num', v:500*G, label:'LA DETTE NOUVELLEMENT ÉMISE POUR L\'IA, EN NEUF MOIS DE 2026', red:true, src:S.gs, en:'NEW DEBT ISSUED FOR AI IN NINE MONTHS OF 2026'},
+    {k:'num', v:613*G, label:'LA DETTE DE LEHMAN BROTHERS À SA FAILLITE', red:true, src:S.leh, en:'LEHMAN BROTHERS\' DEBT WHEN IT WENT BANKRUPT'},
+    {k:'num', v:700*G, label:'LE PLAN DE SAUVETAGE DES BANQUES VOTÉ PAR LE CONGRÈS', src:S.tarp, en:'THE BANK BAILOUT PASSED BY CONGRESS'},
+    {k:'num', v:1.3*T, label:'LA DETTE EXTÉRIEURE DE TOUTE L\'AFRIQUE', red:true, src:S.afd, en:'ALL OF AFRICA\'S FOREIGN DEBT'},
+    {k:'num', v:1.3*T, label:'LES SUBPRIMES EN 2007', red:true, src:S.sub, en:'SUBPRIME MORTGAGES IN 2007'},
+    {k:'num', v:1.65*T, label:'CE QUE CINQ GÉANTS DE LA TECH NE MONTRENT PAS DANS LEURS COMPTES', red:true, src:S.nik, en:'WHAT FIVE TECH GIANTS DON\'T SHOW IN THEIR ACCOUNTS'},
+    {k:'num', v:1.75*T, label:'INJECTÉ PAR LA RÉSERVE FÉDÉRALE POUR ÉTEINDRE LA CRISE', src:S.fed, en:'INJECTED BY THE FEDERAL RESERVE TO PUT OUT THE CRISIS'},
+    {k:'num', v:1.858*T, label:'LA DETTE DE 42,8 MILLIONS D\'ÉTUDIANTS AMÉRICAINS', red:true, src:S.stud, en:'THE DEBT OF 42.8 MILLION AMERICAN STUDENTS'},
+
+    {k:'num', v:3.63*T, label:'LE PIB DE TOUTE L\'AFRIQUE', src:S.afg, en:'THE GDP OF ALL OF AFRICA'},
+    {k:'num', v:5.08*T, label:'NVIDIA', src:S.mcl, en:'NVIDIA'},
+    {k:'num', v:14*T, label:'LA RICHESSE PERDUE PAR LES MÉNAGES AMÉRICAINS EN 2008', src:S.fed, en:'THE WEALTH LOST BY AMERICAN HOUSEHOLDS IN 2008'},
+    {k:'num', v:31.077*T, label:'LA VALEUR DE DOUZE ENTREPRISES DE L\'IA', final:true, count:5000, hold:1000, en:'THE VALUE OF TWELVE AI COMPANIES'},
+    {k:'punch', text:'1,6 % DES ENTREPRISES DU S&P 500', src:S.spx, en:'1.6% OF S&P 500 COMPANIES'},
+    {k:'punch', text:'36,5 % DE LA VALEUR DU S&P 500', src:S.spx, en:'36.5% OF THE S&P 500\'S VALUE'},
+    {k:'punch', text:'À UN DOLLAR PAR SECONDE, IL FAUDRAIT 985 000 ANS POUR LES COMPTER', en:'AT ONE DOLLAR PER SECOND, IT WOULD TAKE 985,000 YEARS TO COUNT THEM'},
+    {k:'punch', text:'2,2 FOIS LA RICHESSE EFFACÉE EN 2008', en:'2.2 TIMES THE WEALTH WIPED OUT IN 2008'},
+    {k:'punch', text:'942 ANS D\'AIDE HUMANITAIRE MONDIALE', hold:1e9, en:'942 YEARS OF GLOBAL HUMANITARIAN AID'},
+  ];
+  // Chaque chiffre repart du précédent ; seul le premier part de 0.
+  // chaque chiffre repart de 0
+  SCENES.forEach(s => { if (s.k === 'num') s.from = 0; });
+  // Après le chiffre final, il reste affiché en grand pendant les messages de fin.
+  { let fin = null; SCENES.forEach(s => { if (s.final) fin = s; else if (fin && s.k === 'punch') s.ref = fin; }); }
+
+  const MORPH = 1000, COUNT = 2000, BLINK = 600;
+  // Temps de lecture après l'arrivée du chiffre, selon la longueur de la plus longue des deux lignes
+  const HOLD_A = 900, HOLD_B = 37, HOLD_MIN = 1800, HOLD_MAX = 4300;
+  const frOf = s => s ? (s.k === 'num' ? s.label : s.text) : '';
+  const enOf = s => s ? (s.en || frOf(s)) : '';
+  const holdOf = s => Math.max(HOLD_MIN, Math.min(HOLD_MAX, HOLD_A + HOLD_B*Math.max(frOf(s).length, enOf(s).length)));
+
+  const stage = document.getElementById('stage');
+  const wall = document.getElementById('wall');
+  const ctx = wall.getContext('2d');
+  const bg = document.createElement('canvas');
+  const bctx = bg.getContext('2d');
+  const tcan = document.createElement('canvas');   // calque texte
+  const tctx = tcan.getContext('2d');
+  const ncan = document.createElement('canvas');   // calque chiffre
+  const nctx = ncan.getContext('2d');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let W=0, H=0, dpr=1, tsize=16, tcw=10;
+  let idx=0, t0=performance.now(), playing=true, pausedAt=0;
+
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const C = {off:css('--led-off'), on:css('--led-on'), red:css('--led-red'), void:css('--void')};
+  const FONT = css('--f-led');
+
+  const group = s => s.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const fmt = (v, dec) => {
+    if (dec){ const [a,b] = v.toFixed(dec).split('.'); return group(a) + ',' + b + ' $'; }
+    return group(Math.round(v).toString()) + ' $';
+  };
+  const clamp = x => Math.max(0, Math.min(1, x));
+
+  // Largeur de la grille de texte : la plus longue ligne de toute la séquence
+  const MAXC = Math.max(...SCENES.map(s => Math.max(frOf(s).length, enOf(s).length))) + 1;
+
+  function layout(){
+    const r = stage.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = r.width; H = r.height;
+    for (const c of [wall, bg, tcan, ncan]){ c.width = Math.round(W*dpr); c.height = Math.round(H*dpr); }
+    // écran de tubes éteints : bandes horizontales, coutures verticales
+    bctx.setTransform(dpr,0,0,dpr,0,0);
+    bctx.fillStyle = C.void; bctx.fillRect(0,0,W,H);
+    const pitch = Math.max(5, H/60);
+    bctx.fillStyle = C.off;
+    for (let y = pitch*.25; y < H; y += pitch) bctx.fillRect(0, y, W, pitch*.5);
+    bctx.fillStyle = C.void;
+    const seam = Math.max(24, W/32);
+    for (let x = seam; x < W; x += seam) bctx.fillRect(x, 0, Math.max(1, seam*.06), H);
+    ctx.font = `800 100px ${FONT}`;
+    const cw100 = ctx.measureText('M').width;
+    tsize = Math.min(H*.055, (W*.93)/(MAXC*cw100/100));
+    tcw = cw100*tsize/100;
+  }
+
+  // --- Chiffre : police bâton 5 × 7, chaque point est une barre horizontale ---
+  const F5 = {
+    '0':['011110','110011','110011','110011','110011','110011','110011','110011','011110'],
+    '1':['001100','011100','111100','001100','001100','001100','001100','001100','111111'],
+    '2':['011110','110011','000011','000110','001100','011000','110000','110000','111111'],
+    '3':['111110','000011','000011','000011','011110','000011','000011','000011','111110'],
+    '4':['000110','001110','011110','110110','110110','111111','000110','000110','000110'],
+    '5':['111111','110000','110000','111110','000011','000011','000011','110011','011110'],
+    '6':['011110','110000','110000','111110','110011','110011','110011','110011','011110'],
+    '7':['111111','000011','000011','000110','001100','001100','001100','001100','001100'],
+    '8':['011110','110011','110011','110011','011110','110011','110011','110011','011110'],
+    '9':['011110','110011','110011','110011','011111','000011','000011','000011','011110'],
+    '$':['001100','011111','110000','110000','011110','000011','000011','111110','001100'],
+    ',':['000','000','000','000','000','000','011','011','110'],
+    '.':['000','000','000','000','000','000','000','011','011'],
+    ' ':['000','000','000','000','000','000','000','000','000'],
+  };
+  const glyph = ch => F5[ch] || F5[' '];
+  const colsOf = str => { let c = 0; for (const ch of str) c += glyph(ch)[0].length + 1; return Math.max(0, c-1); };
+  function split(words, n){
+    const total = words.join(' ').length, target = total/n, out=[]; let cur='';
+    for (const w of words){
+      const next = cur ? cur+' '+w : w;
+      if (cur && next.length > target*1.15 && out.length < n-1){ out.push(cur); cur = w; }
+      else cur = next;
+    }
+    out.push(cur); return out;
+  }
+  const RH = 1.35, GR = 9, LINE = 11;              // hauteur d'une rangée (× largeur d'un point), hauteur d'une ligne (en rangées)
+  const numBox = () => ({x:W*.04, y:H*.27, w:W*.92, h:H*.68});
+  const fitCache = {};
+  function fitFor(text){
+    const key = text + '|' + W + 'x' + H;
+    if (fitCache[key]) return fitCache[key];
+    const b = numBox(), words = text.split(' ');
+    let best = {n:1, cw:0};
+    for (let n=1; n<=1; n++){   // toujours sur une seule ligne
+      const maxc = Math.max(...split(words, n).map(colsOf));
+      const cw = Math.min(b.w/maxc, b.h/((n*LINE - (LINE-GR))*RH));
+      if (cw > best.cw*1.12) best = {n, cw};
+    }
+    return fitCache[key] = best;
+  }
+  function drawNumber(value, dec, fitText, color){
+    const f = fitFor(fitText), b = numBox();
+    const cw = f.cw, rh = cw*RH;
+    const lines = split(fmt(value, dec).split(' '), f.n);
+    const blockH = (lines.length*LINE - (LINE-GR))*rh;
+    const top = b.y + b.h/2 - blockH/2;
+    nctx.setTransform(1,0,0,1,0,0);
+    nctx.clearRect(0,0,ncan.width,ncan.height);
+    nctx.setTransform(dpr,0,0,dpr,0,0);
+    nctx.fillStyle = color;
+    lines.forEach((line, li) => {
+      // aligné à droite sur la largeur du chiffre final : les chiffres poussent vers la gauche
+      let x = W/2 + colsOf(fitText)*cw/2 - colsOf(line)*cw;
+      const y0 = top + li*LINE*rh;
+      for (const ch of line){
+        const g = glyph(ch);
+        g.forEach((row, r) => {
+          let j = 0;
+          while (j < row.length){
+            if (row[j] !== '1'){ j++; continue; }
+            let e = j; while (e+1 < row.length && row[e+1] === '1') e++;
+            nctx.fillRect(x + j*cw + cw*.05, y0 + r*rh + rh*.18, (e-j+1)*cw - cw*.06, rh*.64);
+            j = e+1;
+          }
+        });
+        x += (g[0].length + 1)*cw;
+      }
+    });
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = .75; ctx.filter = `blur(${Math.round(cw*.9*dpr)}px)`;
+    ctx.drawImage(ncan, 0, 0);
+    ctx.restore();
+    ctx.drawImage(ncan, 0, 0);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+
+  // --- Texte : en haut à gauche, brouillage multilingue d'un fait à l'autre ---
+  const GLYPHS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÀÂÇÉÈÊËÎÏÔÙÛÜŒΓΔΘΛΞΠΣΦΨΩБГДЖЗИЙЛПФЦЧШЩЪЫЭЮЯ0123456789$%&#';
+  function cellsOf(str){
+    const a = new Array(MAXC).fill(' ');
+    for (let i=0;i<str.length && i<MAXC;i++) a[i] = str[i];
+    return a;
+  }
+  const rnd = (j, seed) => (((j+1)*2654435761) ^ ((seed+3)*40503)) >>> 0;
+  function morphCells(A, B, p, seed){
+    const out = [];
+    for (let j=0;j<MAXC;j++){
+      const st = .6*j/MAXC, loc = (p - st)/.4, a = A[j], b = B[j];
+      if (loc <= 0) out.push([a, 0]);
+      else if (loc >= 1 || (a === ' ' && b === ' ')) out.push([b, 1]);
+      else out.push([GLYPHS[rnd(j, seed) % GLYPHS.length], 1]);
+    }
+    return out;
+  }
+  const colOf = s => s && s.red ? C.red : C.on;     // le rouge est réservé aux dettes
+  function drawLine(cells, y, cOld, cNew, alpha){
+    tctx.font = `800 ${tsize}px ${FONT}`;
+    tctx.textAlign = 'center'; tctx.textBaseline = 'middle';
+    tctx.globalAlpha = alpha;
+    const x0 = W*.04;
+    cells.forEach(([ch, isNew], j) => {
+      if (ch === ' ') return;
+      tctx.fillStyle = isNew ? cNew : cOld;
+      tctx.fillText(ch, x0 + (j+.5)*tcw, y);
+    });
+    tctx.globalAlpha = 1;
+  }
+
+  function interp(a, b, e){
+    if (a > 0 && b/a > 20) return a * Math.pow(b/a, e);   // grands sauts : progression logarithmique
+    return a + (b-a)*e;
+  }
+  const countOf = s => s.count || COUNT;
+  function durOf(s){
+    const lead = reduce ? 0 : (s.k === 'num' ? MORPH + countOf(s) + BLINK : MORPH);
+    return lead + holdOf(s) + (s.hold || 0);
+  }
+  // Chiffre affiché à la fin d'une scène
+  function shownNumber(s){
+    if (!s) return null;
+    const n = s.k === 'num' ? s : s.ref;
+    return n ? {v:n.v, dec:n.dec, color:colOf(n), fit:fmt(n.v, n.dec)} : null;
+  }
+
+  // --- Brume de scène : deux nappes de bruit qui dérivent devant l'écran ---
+  function makeFog(seed){
+    const w = 256, h = 128, c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'), img = g.createImageData(w, h);
+    let rs = seed*7919 + 13; const rand = () => (rs = (rs*16807) % 2147483647) / 2147483647;
+    const octs = [[6,3,.55],[12,6,.25],[24,12,.13],[48,24,.07]];
+    const grids = octs.map(([gx,gy]) => Array.from({length:gx*gy}, rand));
+    const sm = t => t*t*(3-2*t);
+    for (let y=0;y<h;y++) for (let x=0;x<w;x++){
+      let v = 0;
+      octs.forEach(([gx,gy,amp], o) => {
+        const fx = x/w*gx, fy = y/h*gy, x0 = Math.floor(fx), y0 = Math.floor(fy);
+        const tx = sm(fx-x0), ty = sm(fy-y0), G = grids[o];
+        const at = (i,j) => G[((j%gy)+gy)%gy*gx + ((i%gx)+gx)%gx];
+        const a = at(x0,y0) + (at(x0+1,y0)-at(x0,y0))*tx, b = at(x0,y0+1) + (at(x0+1,y0+1)-at(x0,y0+1))*tx;
+        v += amp*(a + (b-a)*ty);
+      });
+      const al = Math.max(0, Math.min(1, (v - .44)*3.2));
+      const k = (y*w + x)*4;
+      img.data[k] = 190; img.data[k+1] = 138; img.data[k+2] = 92; img.data[k+3] = al*255;
+    }
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+  const FOG = [makeFog(1), makeFog(2)];
+  function drawFog(now){
+    const t = reduce ? 0 : now/1000;
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    const fw = W*2*dpr, fh = H*1.3*dpr;
+    [[0, .024, .34, 1], [1, -.04, .26, -1]].forEach(([i, sp, al, dir]) => {
+      const off = ((t*sp*W*dpr) % fw + fw) % fw;
+      const y = -H*.15*dpr + Math.sin(t/9 + i*2)*H*.05*dpr;
+      ctx.globalAlpha = al*(0.8 + 0.2*Math.sin(t/6 + i*3));
+      ctx.drawImage(FOG[i], off - fw, y, fw, fh);
+      ctx.drawImage(FOG[i], off, y, fw, fh);
+    });
+    ctx.restore();
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+
+  function render(now){
+    const s = SCENES[idx], prev = SCENES[idx-1];
+    const el = (playing ? now : pausedAt) - t0;
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.drawImage(bg,0,0);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+
+    // chiffre
+    if (s.k === 'num'){
+      const tc = el - (reduce ? 0 : MORPH);
+      if (tc >= 0){   // pendant le changement de fait, l'écran du chiffre est éteint
+        const dur = countOf(s);
+        const p = reduce ? 1 : clamp(tc/dur), e = 1 - Math.pow(1-p, 3);
+        const value = p >= 1 ? s.v : interp(s.from, s.v, e);
+        const bt = tc - dur;
+        const hidden = !reduce && bt >= 0 && bt < BLINK && Math.floor(bt/120) % 2 === 0;
+        if (!hidden) drawNumber(value, s.dec, fmt(s.v, s.dec), colOf(s));
+      }
+    } else {
+      const pn = shownNumber(s);
+      if (pn) drawNumber(pn.v, pn.dec, pn.fit, pn.color);
+    }
+
+    // texte : français au-dessus, anglais dessous, en haut à gauche
+    const pm = reduce ? 1 : clamp(el/MORPH), seed = Math.floor(el/60);
+    tctx.setTransform(1,0,0,1,0,0);
+    tctx.clearRect(0,0,tcan.width,tcan.height);
+    tctx.setTransform(dpr,0,0,dpr,0,0);
+    const y1 = H*.08, y2 = y1 + tsize*1.7;
+    const cO = colOf(prev), cN = colOf(s);
+    drawLine(morphCells(cellsOf(frOf(prev)), cellsOf(frOf(s)), pm, seed), y1, cO, cN, 1);
+    drawLine(morphCells(cellsOf(enOf(prev)), cellsOf(enOf(s)), pm, seed + 11), y2, cO, cN, .78);
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.save();
+    ctx.globalAlpha = .6; ctx.filter = `blur(${Math.round(tsize*.35*dpr)}px)`;
+    ctx.drawImage(tcan, 0, 0);
+    ctx.restore();
+    ctx.drawImage(tcan, 0, 0);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+
+    drawFog(now);
+
+    if (playing && el > durOf(s) && idx < SCENES.length-1) go(idx+1);
+    requestAnimationFrame(render);
+  }
+
+  // Progression
+  const ticks = document.getElementById('ticks'), pos = document.getElementById('pos');
+  SCENES.forEach(s => { const i = document.createElement('i'); if (s.red || s.k==='punch') i.className='red'; ticks.appendChild(i); });
+  function go(n){
+    idx = n; t0 = performance.now(); if (!playing) pausedAt = t0;
+    [...ticks.children].forEach((el,i) => { el.classList.toggle('on', i<idx); el.classList.toggle('now', i===idx); });
+    pos.textContent = String(idx+1).padStart(2,'0') + ' / ' + SCENES.length;
+  }
+
+  // Programme sous la scène
+  const prog = document.getElementById('program');
+  let html = '<h2>La séquence</h2><ol class="seq">', open = true, num = 0;
+  const esc = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const lc = t => { const s = t.toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1); };
+  const link = u => u ? ` <a href="${u}" target="_blank" rel="noopener">source</a>` : '';
+  SCENES.forEach(s => {
+    if (s.k === 'act'){ if (open) html += '</ol>'; html += `<h3>${esc(s.act)}</h3><ol class="seq">`; open = true; }
+    else if (s.k === 'num'){ num++; html += `<li class="${s.red?'red':''}"><span class="k">${String(num).padStart(2,'0')}</span><span class="v">${fmt(s.v, s.dec)}</span><span class="t">${esc(lc(s.label))}${link(s.src)}<span class="en">${esc(lc(s.en||''))}</span></span></li>`; }
+    else if (s.k === 'punch' && open){ html += `<li class="punch"><span class="k">→</span><span>${esc(s.text)}${link(s.src)}<span class="en">${esc(s.en||'')}</span></span></li>`; }
+  });
+  if (open) html += '</ol>';
+  prog.innerHTML = html;
+
+  // Commandes
+  const play = document.getElementById('play');
+  function toggle(){
+    if (playing){ playing=false; pausedAt=performance.now(); play.textContent='Lecture'; }
+    else { t0 += performance.now()-pausedAt; playing=true; play.textContent='Pause'; }
+  }
+  play.addEventListener('click', toggle);
+  document.getElementById('restart').addEventListener('click', () => { if(!playing) toggle(); go(0); });
+  document.getElementById('fs').addEventListener('click', () => {
+    try { if (document.fullscreenElement) document.exitFullscreen(); else stage.requestFullscreen?.().catch(()=>{}); } catch(e){}
+  });
+  stage.addEventListener('click', () => { if (idx < SCENES.length-1) go(idx+1); });
+  addEventListener('keydown', e => {
+    if (e.target.tagName === 'BUTTON') return;
+    if (e.code === 'Space'){ e.preventDefault(); toggle(); }
+    if (e.code === 'ArrowRight' && idx < SCENES.length-1) go(idx+1);
+    if (e.code === 'ArrowLeft' && idx > 0) go(idx-1);
+  });
+
+  let rt; new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(() => { layout(); }, 60); }).observe(stage);
+
+  const start = () => { layout(); go(0); requestAnimationFrame(render); };
+  // Ne jamais bloquer le démarrage si la police tarde ou est refusée
+  const fontReady = document.fonts?.load ? document.fonts.load('800 40px "JetBrains Mono"').catch(()=>{}) : Promise.resolve();
+  Promise.race([fontReady, new Promise(r => setTimeout(r, 1200))]).then(start);
+  document.fonts?.ready?.then(() => { if (W) layout(); });
+})();
+</script>
+</body>
+</html>
